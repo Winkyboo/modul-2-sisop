@@ -215,7 +215,7 @@ After all heroine images are successfully downloaded, Cella wants them archived:
 - Only `solver.c` should be submitted on GitHub.
 
 
-# Jawaban
+# Kode Akhir
 ```c
 #include <stdio.h>
 #include <stdlib.h>
@@ -522,3 +522,187 @@ int main() {
 }
 
 ```
+## Kode untuk 3a. Summoning the Manhwa Stats
+
+### Kode C:
+```c
+void fetchJSON(const char *id){
+    pid_t pid = fork();
+    if (pid == 0){
+        char url[256];
+        snprintf(url, sizeof(url), "https://api.jikan.moe/v4/manga/%s/full", id);
+        execlp("curl", "curl", "-s", "-o", "response.json", url, NULL);
+        perror("execlp failed");
+        exit(EXIT_FAILURE);
+    }
+    else wait(NULL);
+}
+
+void parseAndSave(){
+    FILE *fp = fopen("response.json", "r");
+    char buffer[8192];
+    fread(buffer, 1, sizeof(buffer), fp);
+    fclose(fp);
+    ... // Ambil title, status, release, genre, theme, author pakai strstr + sscanf
+    FILE *out = fopen(filepath, "w");
+    fprintf(out, ...); // Tulis data ke file
+    fclose(out);
+}
+
+int main() {
+    fetchJSON("168827"); parseAndSave();
+    fetchJSON("147205"); parseAndSave();
+    fetchJSON("169731"); parseAndSave();
+    fetchJSON("175521"); parseAndSave();
+}
+```
+
+###  Penjelasan:
+- `pid_t pid = fork();`
+  - Membuat child process. Kalau `pid == 0`, berarti kita di proses anak. Parent lanjut ke bawah.
+
+- `snprintf(url, sizeof(url), ...)`
+  - membuat URL API JIKAN berdasarkan ID manhwa yang ditentukan.
+
+- `execlp("curl", "curl", "-s", "-o", "response.json", url, NULL);`
+  - Ganti proses anak jadi proses `curl` untuk mengambil file JSON dari API dan simpan ke file `response.json`.
+
+- `wait(NULL);`
+  - Parent menunggu anak selesai.
+
+- `fopen("response.json", "r");`
+  - Buka file hasil `curl` buat dibaca.
+
+- `fread(buffer, 1, sizeof(buffer), fp);`
+  - Baca seluruh isi JSON ke dalam buffer.
+
+- `strstr()` + `sscanf()`
+  - Cari dan ambil semua data penting yang dibutuhkan soal dari JSON, seperti judul, status, tanggal rilis, dll.
+
+- `fprintf(out, ...)`
+  - Tulis data ke file txt dengan format sesuai soal.
+
+- `cleanTitle()` membersihkan nama file supaya aman, ganti spasi jadi underscore.
+
+---
+
+##  3b. Seal the Scrolls
+
+###  Kode C:
+```c
+void Zipmanga() {
+    Folder("Archive");
+    DIR *dir = opendir("Manhwa");
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR || !strstr(entry->d_name, ".txt")) continue;
+        ...
+        Uppercase(uppercase, filename);
+        snprintf(dest, ..., "Archive/%s.zip", uppercase);
+        pid_t pid = fork();
+        if (pid == 0) execlp("zip", "zip", "-j", dest, source, NULL);
+        else wait(NULL);
+    }
+}
+```
+
+###  Penjelasan:
+- `opendir("Manhwa")` + `readdir()`
+  - Buka folder `Manhwa` dan cek semua file di dalamnya.
+
+- `entry->d_type == DT_DIR`
+  - Kalau ketemu folder selain`.txt` , maka dapat dilewati. Kita hanya mencari file `.txt`.
+
+- `Uppercase()`
+  - Ambil huruf besar dari nama file untuk dibuat menjadi jadi nama zip.
+
+- `snprintf(dest, ..., "Archive/%s.zip", uppercase);`
+  - Buat path lengkap untuk file zip.
+
+- `execlp("zip", "zip", "-j", dest, source, NULL);`
+  - Zip file `.txt` tanpa menyimpan struktur folder.
+
+---
+
+##  3c. Making the Waifu Gallery
+
+###  Kode C:
+```c
+typedef struct {
+    const char* heroine;
+    const char* image_url;
+    int count;
+} DownloadTask;
+
+void* downloadImages(void* arg) {
+    DownloadTask* task = (DownloadTask*)arg;
+    snprintf(folder, ..., "Heroines/%s", task->heroine);
+    makeFolder(folder);
+    for (int i = 0; i < task->count; i++) {
+        snprintf(filename, ..., "Heroines/%s/%s_%d.jpg", ...);
+        snprintf(cmd, ..., "curl -s %s -o \"%s\"", ...);
+        system(cmd);
+    }
+    pthread_exit(NULL);
+}
+
+int main() {
+    DownloadTask tasks[] = { {"Lia", url, 3}, ... };
+    for (int i = 0; i < n; i++) {
+        pthread_t tid;
+        pthread_create(&tid, NULL, downloadImages, &tasks[i]);
+        pthread_join(tid, NULL);
+    }
+}
+```
+
+###  Penjelasan:
+- `typedef struct DownloadTask` membuat struktur buat nyimpen nama heroine, link gambar, dan jumlah gambar.
+
+- `pthread_create()` buat jalankan thread baru yang ngejalanin `downloadImages()`.
+
+- `pthread_join()` pastikann download heroine sekarang selesai dulu sebelum lanjut ke heroine berikutnya.
+
+- `system(cmd)` menjalankan perintah curl dari sistem buat download gambar (hanya boleh di problem C).
+
+- `snprintf(...)` spesifikasikan nama folder dan nama file dengan aman.
+
+- `makeFolder()` membuat folder pakai `mkdir -p` via `system()`.
+
+---
+
+##  3d. Zip. Save. Goodbye
+
+###  Kode C:
+```c
+void ZipAkhir() {
+    Folder("Archive/Images");
+    for (int i = 0; i < n; i++) {
+        snprintf(zipname, ..., "Archive/Images/%s_%s.zip", manhwa_code, heroine);
+        pid_t pid = fork();
+        if (pid == 0) execlp("zip", "zip", "-r", zipname, folder, NULL);
+        else wait(NULL);
+    }
+    for (int i = 0; i < n; i++) {
+        DIR* dir = opendir(...);
+        while ((entry = readdir(dir)) != NULL) {
+            if (entry->d_type == DT_REG && strstr(entry->d_name, ".jpg")) remove(filepath);
+        }
+        closedir(dir);
+    }
+}
+```
+
+###  Penjelasan:
+- `Folder("Archive/Images")`
+  - Buat folder baru untuk menyimpan hasil zip dari gambar heroine.
+
+- `snprintf()` buat nama zip seperti template soal `DWCD_Ophelia.zip`
+
+- `execlp("zip", ...)` zip folder heroine satu per satu lewat fork + exec.
+
+- Loop kedua buka folder heroine, cari file `.jpg`, lalu hapus memakai `remove()`.
+
+- `strstr(entry->d_name, ".jpg")` pastikan cuma file gambar yang dihapus.
+
+
+
